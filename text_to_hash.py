@@ -1,5 +1,5 @@
 import hashlib
-input_file = 'crackstation.txt'
+input_file = '10_million_password_list_top_1000000.txt'
 output_file = 'crackstation_hash.txt'
 
 counter = 0
