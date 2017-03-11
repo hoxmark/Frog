@@ -5,7 +5,7 @@
 int main(int argc, char **argv)
 {
     {
-        int lines_allocated = 1000000;
+        int lines_allocated = 999999;
 
         /* Max line len in characters*/
         int max_line_len = 65;
@@ -69,11 +69,11 @@ int main(int argc, char **argv)
         /* Close file */
         fclose(fp);
 
-        int j;
-        for (j = 0; j < i; j++)
-        {
-            printf("%s\n", words[j]);
-        }
+        // int j;
+        // for (j = 0; j < i; j++)
+        // {
+        //     printf("%s\n", words[j]);
+        // }
 
         /* Good practice to free memory */
         for (; i >= 0; i--)

@@ -1,6 +1,7 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
+// #include <stdlib.h>
+// #include <math.h>
+// #include "cuda.h"
 #include <cuda.h>
 
 #define cudaCheckErrors(msg)                                   \
@@ -17,99 +18,104 @@
         }                                                      \
     } while (0)
 
-/* Functions to be implemented: */
-void device_allocation();
-void ftcs_kernel();
-void print_gpu_info();
+// // char **device_hashes;
+// // char **host_hashes;
+// // char **help_array;
+int num_lines = 1000000;
 
-int n_cores = 4992;
+int line_length = 64;
 
-void print_gpu_info()
+char *host_hashes;
+char *device_hashes;
+
+const int N = 16;
+const int blocksize = 16;
+__device__ char *target = "93eb2df432f7d1b7281568260bbf03e06bc0b5b344ea41a1bd2ac440f5655a0f";
+__device__ int d_answer = 0;
+
+// // int **devicePointersStoredInDeviceMemory;
+
+// void device_allocation();
+
+__global__ void hello(char *hashes)
 {
-    int n_devices;
-    cudaGetDeviceCount(&n_devices);
-    printf("Number of CUDA devices: %d\n", n_devices);
-    cudaDeviceProp device_prop;
-    cudaGetDeviceProperties(&device_prop, 0);
-    printf("CUDA device name: %s\n", device_prop.name);
-    printf("Compute capability: %d.%d\n", device_prop.major, device_prop.minor);
+    int id = threadIdx.x + blockIdx.x * blockDim.x;
+    bool found = true;
+    int i;
+    char hash[64];
+    for (i = id * 64; i < (id + 1) * 64; i++)
+    {
+        hash[i-id*64] = hashes[i];
+        if (hashes[i] != target[i - id * 64])
+        {
+            found = false;
+        }
+    }
+
+    // printf("%d: \t %s \n", id, hash);
+
+    if (found)
+    {
+        printf("We found it %d \n", id);
+        d_answer = 1;
+    }
 }
 
-int main(int argc, char **argv)
+int main()
 {
-    print_gpu_info();
+    printf("1\n");
+    int total_length = num_lines * line_length;
+    printf("Total length %d\n", total_length);
+    FILE *fp = fopen("/datadrive/crackstation_hash.txt", "r");
+    host_hashes = (char *)malloc(num_lines * line_length * sizeof(char));
 
+    if (fgets(host_hashes, total_length, fp) == NULL)
     {
-        int lines_allocated = 999999;
-        int max_line_len = 64;
-
-        /* Allocate lines of text */
-        char **words = (char **)malloc(sizeof(char *) * lines_allocated);
-        if (words == NULL)
-        {
-            fprintf(stderr, "Out of memory (1).\n");
-            exit(1);
-        }
-
-        FILE *fp = fopen("crackstation_hash.txt", "r");
-        if (fp == NULL)
-        {
-            fprintf(stderr, "Error opening file.\n");
-            exit(2);
-        }
-
-        int i;
-        for (i = 0; 1; i++)
-        {
-            int j;
-
-            /* Have we gone over our line allocation? */
-            if (i >= lines_allocated)
-            {
-                printf("We have gone over our line allocation\n"); 
-                int new_size;
-
-                /* Double our allocation and re-allocate */
-                new_size = lines_allocated * 2;
-                words = (char **)realloc(words, sizeof(char *) * new_size);
-                if (words == NULL)
-                {
-                    fprintf(stderr, "Out of memory.\n");
-                    exit(3);
-                }
-                lines_allocated = new_size;
-            }
-            /* Allocate space for the next line */
-
-            // Sizeof(char)?? 
-            words[i] = malloc(max_line_len);
-            
-            if (words[i] == NULL)
-            {
-                fprintf(stderr, "Out of memory (3).\n");
-                exit(4);
-            }
-            if (fgets(words[i], max_line_len - 1, fp) == NULL)
-                break;
-
-            /* Get rid of CR or LF at end of line */
-            for (j = strlen(words[i]) - 1; j >= 0 && (words[i][j] == '\n' || words[i][j] == '\r'); j--)
-                ;
-            words[i][j + 1] = '\0';
-        }
-        /* Close file */
-        fclose(fp);
-
-        int j;
-        for (j = 0; j < i; j++)
-            printf("%s\n", words[j]);
-
-        /* Good practice to free memory */
-        for (; i >= 0; i--)
-            free(words[i]);
-        free(words);
-        return 0;
-
-        exit(EXIT_SUCCESS);
+        printf("We failed\n");
     }
+    for (int i = 0; i < 64; i++)
+    {
+        printf("%c", host_hashes[i]);
+    }
+
+    printf("\n");
+
+    cudaCheckErrors("after host buffer");
+    cudaMalloc((void **)&device_hashes, total_length * sizeof(char));
+    cudaMemcpy(device_hashes, host_hashes, total_length * sizeof(char), cudaMemcpyHostToDevice);
+    cudaCheckErrors("after copy to device");
+
+
+    /* WHY DO WE NEED THIS ?!?!?!?!? */
+    char a[N] = "Hello \0\0\0\0\0\0";
+    const int csize = N * sizeof(char);
+    char *ad;
+    cudaMalloc((void **)&ad, csize);
+    cudaMemcpy(ad, a, csize, cudaMemcpyHostToDevice);
+
+    cudaCheckErrors("before kernel run ");
+    dim3 dimBlock(1000, 1);
+    dim3 dimGrid(1000, 1);
+
+    /* Timing */
+
+    cudaEvent_t start, stop;
+    float elapsedTime;
+    cudaEventCreate(&start);
+    cudaEventRecord(start, 0);
+    hello<<<dimGrid, dimBlock>>>(device_hashes);
+
+    cudaEventCreate(&stop);
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsedTime, start, stop);
+    printf("Elapsed time: %f\n", elapsedTime);
+    cudaCheckErrors("After kernel run ");
+
+    /* WHY DO WE NEED HTIS ?!?!?! */
+    cudaFree(ad);
+
+    cudaCheckErrors("After free 1 ");
+    cudaCheckErrors("After free 2 ");
+    return EXIT_SUCCESS;
 }
