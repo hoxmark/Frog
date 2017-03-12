@@ -5,12 +5,12 @@
 
 int main()
 {
-    char password[] = "Doggers";
+    char password[] = "vjht008";
     size_t length = sizeof(password);
     unsigned char hash[SHA_DIGEST_LENGTH];
     unsigned char hash2[SHA_DIGEST_LENGTH];
     SHA1((unsigned char *)password, length, hash);
-    char *fileName = "crackstation.txt";
+    char *fileName = "10_million_password_list_top_1000000.txt"; 
     FILE *file = fopen(fileName, "r"); /* should check the result */
     char line[256];
     unsigned int ctr = 0;
