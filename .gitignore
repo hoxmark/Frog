@@ -1,5 +1,5 @@
 .vscode
-crackstation.txt
-passwords.txt
+*.txt
 output
-crackstation_hash.txt
+.ftpconfig
+.gcc-flags.json
