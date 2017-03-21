@@ -20,18 +20,18 @@
         }                                                                      \
     } while (0)
 
-int num_lines = 150000000;
-int line_length = 12;
+long num_lines = 440000000;
+int line_length = 9;
 
 char* host_passwords;
 int* host_password_lengths;
 int* host_start_indexes;
 
-char* device_hashes;
+char* device_passwords;
 int* device_password_lengths;
 int* device_start_indexes;
+unsigned char *device_targets;
 
-const char* target = {"1d2adc0b54e11300dfa718b012de7f8af4befb29515b984fcf4e39bd4e96d43d"};
 __constant__ unsigned char target_hex[32];
 
 __device__ void calculate_hash(unsigned char* pass_cleartext, unsigned char* hash, int length) {
@@ -41,55 +41,72 @@ __device__ void calculate_hash(unsigned char* pass_cleartext, unsigned char* has
     sha256_final(&ctx, hash);
 }
 
-__global__ void compare_hashes(char* hashes, int* lengths, int* start_indexes) {
+__global__ void compare_hashes(char* hashes, int* lengths, int* start_indexes, unsigned char *targets) {
     int id = threadIdx.x + blockIdx.x * blockDim.x;
-    int total_length = 150000000;
-    int increment = blockDim.x * gridDim.x;
+    long num_lines = 440000000;
+    int numThreads = blockDim.x * gridDim.x;
 
-    for (int i = id; i < total_length; i += increment) {
-        int length = lengths[i];
-        int start = start_indexes[i];
+    int num_to_calculate = num_lines / numThreads;
+    num_to_calculate += 1;
 
-        if(start < total_length){
-            unsigned char pass_cleartext[30];
-            memcpy(pass_cleartext, &hashes[start], length * sizeof(char));
-            pass_cleartext[length] = '\0';
+    if(id == 1){
+        printf("Increment: %d num_to_calculate: %d\n", numThreads, num_to_calculate);
+    }
 
-            unsigned char hash[32];
-            calculate_hash(pass_cleartext, hash, length);
+    long i;
+    // for (i = id; i < num_lines; i += numThreads) {
+    for(i = 0; i < num_to_calculate; i++) {
+        int index = id + i * numThreads;
 
-            bool found = true;
-            for (int j = 0; j < 32; j++) {
-                if (hash[j] != target_hex[j]) {
-                    found = false;
-                    break;
+        if (index < num_lines){
+            int length = lengths[index];
+            int start = start_indexes[index];
+
+            if (start < num_lines) {
+                unsigned char pass_cleartext[30];
+                memcpy(pass_cleartext, &hashes[start], length * sizeof(char));
+                pass_cleartext[length] = '\0';
+
+                unsigned char hash[32];
+                calculate_hash(pass_cleartext, hash, length);
+
+                for(int i = 0; i < 3; i++){
+                    bool found = true;
+                    for (int j = 0; j < 32; j++) {
+                        if (hash[j] != targets[i * 32 + j]) {
+                            found = false;
+                            break;
+                        }
+                    }
+                    if (found) {
+                        printf("Thread %d found it! The password is %s\n", id, pass_cleartext);
+                    }
                 }
-            }
-
-            if (found) {
-                printf("Thread %d found it! The password is %s\n", id, pass_cleartext);
             }
         }
     }
 }
 
+
 int main() {
-    int total_length = num_lines * line_length;
+
+    FILE *fp = fopen("targets.txt", "r");
+    const char * file_name = "/datadrive/cracklist/hashesorg/passwords_one_line.txt";
+    FILE* length_file = fopen("/datadrive/cracklist/hashesorg/password_lengths.txt", "r");
+
+    // Calculate file size
+    int fd = open (file_name, O_RDONLY);
+    size_t password_file_size;
+    password_file_size = lseek(fd, 0, SEEK_END);
+
     host_password_lengths = (int*)malloc(num_lines * sizeof(int));
     host_start_indexes = (int*)malloc(num_lines * sizeof(int));
+    host_passwords = (char *) mmap (0, password_file_size, PROT_READ, MAP_PRIVATE, fd, 0);
 
-    FILE* length_file = fopen("/datadrive/cracklist/password_lengths.txt", "r");
-    // FILE* length_file = fopen("password_lengths.txt", "r");
-    const char * file_name = "/datadrive/cracklist/passwords_one_line.txt";
-
-    int fd = open (file_name, O_RDONLY);
-    host_passwords = (char *) mmap (0, total_length, PROT_READ, MAP_PRIVATE, fd, 0);
-
+    // Copy all the lengths into host_password_lengths
     int i = 0;
     int counter = 0;
     int start = 0;
-
-    // Copy all the lengths into host_password_lengths
     fscanf(length_file, "%d", &i);
     host_password_lengths[counter] = i;
     host_start_indexes[counter] = 0;
@@ -103,39 +120,50 @@ int main() {
         counter++;
     }
     fclose(length_file);
+    int target_count = 3;
+    unsigned char *val = (unsigned char *)malloc(32 * target_count * sizeof(unsigned char));
 
-    // Convert string hash to hex array, copy to constant memory
-    const char* pos = target;
-    unsigned char val[32];
-    size_t count = 0;
-    for (count = 0; count < sizeof(val) / sizeof(val[0]); count++) {
-        sscanf(pos, "%2hhx", &val[count]);
-        pos += 2;
+    char *pos;
+    char str[65];
+    for(int i = 0; i < target_count; i++){
+        if( fgets (str, 100, fp) != NULL ) {
+            printf("New hash: %s \n", str);
+            pos = str;
+            int count;
+            for (count = 0; count < 32; count++) {
+                sscanf(pos, "%2hhx", &val[i * 32 + count]);
+                pos += 2;
+            }
+        }
     }
-    cudaMemcpyToSymbol(target_hex, val, 32 * sizeof(unsigned char));
+    
+    cudaMalloc((void **) &device_targets, target_count * 32 * sizeof(unsigned char));
+    cudaCheckErrors("After cudaMalloc -1");
+    cudaMemcpy(device_targets, val, 32 * target_count * sizeof(unsigned char), cudaMemcpyHostToDevice);
+    cudaCheckErrors("After cudaMemcpy -1");
 
     cudaMalloc((void**)&device_password_lengths, num_lines * sizeof(int));
     cudaCheckErrors("After cudaMalloc 0");
-    cudaMemcpy(device_password_lengths, host_password_lengths,
-               num_lines * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_password_lengths, host_password_lengths, num_lines * sizeof(int), cudaMemcpyHostToDevice);
     cudaCheckErrors("After cudaMemcpy 0");
 
     cudaMalloc((void**)&device_start_indexes, num_lines * sizeof(int));
     cudaCheckErrors("After cudaMalloc 0.5");
-    cudaMemcpy(device_start_indexes, host_start_indexes,
-               num_lines * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_start_indexes, host_start_indexes, num_lines * sizeof(int), cudaMemcpyHostToDevice);
     cudaCheckErrors("After cudaMemcpy 0.5");
 
-    cudaMalloc((void**)&device_hashes, total_length * sizeof(char));
+    cudaMalloc((void**) &device_passwords, password_file_size * sizeof(char));
     cudaCheckErrors("After cudaMalloc 1");
-    cudaMemcpy(device_hashes, host_passwords, total_length * sizeof(char),
-               cudaMemcpyHostToDevice);
+
+    cudaMemcpy(device_passwords, host_passwords, password_file_size * sizeof(char), cudaMemcpyHostToDevice);
     cudaCheckErrors("After cudaMemcpy 1");
 
+    long numGrid = num_lines / 1024;
+    numGrid += 1;
     dim3 dimGrid(1000);
     dim3 dimBlock(1000);
     double n_threads = dimGrid.x * dimBlock.x;
-    printf("Each thread calculating %f hashes \n", num_lines / n_threads);
+    printf("Grid size: %d. Each thread calculating %f hashes \n", numGrid, num_lines / n_threads);
 
     /* Timing */
     cudaEvent_t start_time, stop;
@@ -143,7 +171,7 @@ int main() {
     cudaEventCreate(&start_time);
     cudaEventRecord(start_time, 0);
 
-    compare_hashes<<<dimGrid, dimBlock>>>(device_hashes, device_password_lengths, device_start_indexes);
+    compare_hashes<<<dimGrid, dimBlock>>>(device_passwords, device_password_lengths, device_start_indexes, device_targets);
     cudaCheckErrors("After kernel run ");
     cudaEventCreate(&stop);
     cudaEventRecord(stop, 0);
@@ -151,7 +179,7 @@ int main() {
     cudaEventElapsedTime(&elapsedTime, start_time, stop);
     printf("Elapsed time: %f\n", elapsedTime);
 
-    cudaFree(device_hashes);
+    cudaFree(device_passwords);
     cudaCheckErrors("After free 1 ");
     cudaFree(device_start_indexes);
     cudaCheckErrors("After free 2 ");
