@@ -8,6 +8,9 @@ test: test.c
 crack: crack.cu
 	$(NVCC) -arch=compute_30 crack.cu -o crack
 
+crackb: crackb.cu
+	$(NVCC) -arch=compute_30 crackb.cu -o crackb
+
 tcrack: tcrack.cu
 	$(NVCC) -arch=compute_30 tcrack.cu -o crack
 
@@ -22,3 +25,9 @@ cracktest: cracktest.cu
 
 comparesha: comparesha.c
 	$(CC) -o ./output/comparesha comparesha.c $(CFLAGS)
+
+crack_md5: crack_md5.cu
+	$(NVCC) -arch=compute_30 crack_md5.cu -o crack_md5
+
+crack_sha1: crack_sha1.cu
+	$(NVCC) -arch=compute_30 crack_sha1.cu -o crack_sha1

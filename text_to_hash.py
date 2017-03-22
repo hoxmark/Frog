@@ -1,5 +1,5 @@
-base_dir = "/datadrive/cracklist/hashesorg"
-input_file = '{}/hashesorg.txt'.format(base_dir)
+base_dir = "/datadrive/cracklist/testing"
+input_file = '{}/testing.txt'.format(base_dir)
 output_file = '{}/passwords_one_line.txt'.format(base_dir)
 output_file_lengths = '{}/password_lengths.txt'.format(base_dir)
 
