@@ -3,42 +3,14 @@
 // MD5 Hash Digest implementation (little endian byte order)
 
 // Bah, signed variables are for wimps
-#define uchar unsigned char
-#define uint unsigned int
-
+#include "crack.h"
 // DBL_INT_ADD treats two unsigned ints a and b as one 64-bit integer and adds c
 // to it
-#define DBL_INT_ADD(a, b, c)                                                   \
-    if (a > 0xffffffff - c)                                                    \
-        ++b;                                                                   \
-    a += c;
-#define ROTLEFT(a, b) ((a << b) | (a >> (32 - b)))
-
-#define F(x, y, z) ((x & y) | (~x & z))
-#define G(x, y, z) ((x & z) | (y & ~z))
-#define H(x, y, z) (x ^ y ^ z)
-#define I(x, y, z) (y ^ (x | ~z))
-
-#define FF(a, b, c, d, m, s, t)                                                \
-    {                                                                          \
-        a += F(b, c, d) + m + t;                                               \
-        a = b + ROTLEFT(a, s);                                                 \
-    }
-#define GG(a, b, c, d, m, s, t)                                                \
-    {                                                                          \
-        a += G(b, c, d) + m + t;                                               \
-        a = b + ROTLEFT(a, s);                                                 \
-    }
-#define HH(a, b, c, d, m, s, t)                                                \
-    {                                                                          \
-        a += H(b, c, d) + m + t;                                               \
-        a = b + ROTLEFT(a, s);                                                 \
-    }
-#define II(a, b, c, d, m, s, t)                                                \
-    {                                                                          \
-        a += I(b, c, d) + m + t;                                               \
-        a = b + ROTLEFT(a, s);                                                 \
-    }
+// #define DBL_INT_ADD(a, b, c)                                                   \
+//     if (a > 0xffffffff - c)                                                    \
+//         ++b;                                                                   \
+//     a += c;
+// #define ROTLEFT(a, b) ((a << b) | (a >> (32 - b)))
 
 typedef struct {
     uchar data[64];
@@ -149,7 +121,7 @@ __device__ void md5_init(MD5_CTX* ctx) {
 }
 
 __device__ void md5_update(MD5_CTX* ctx, uchar data[], uint len) {
-    uint t, i;
+    uint i;
 
     for (i = 0; i < len; ++i) {
         ctx->data[ctx->datalen] = data[i];
@@ -201,11 +173,4 @@ __device__ void md5_final(MD5_CTX* ctx, uchar hash[]) {
         hash[i + 8] = (ctx->state[2] >> (i * 8)) & 0x000000ff;
         hash[i + 12] = (ctx->state[3] >> (i * 8)) & 0x000000ff;
     }
-}
-
-__device__ void print_hash(unsigned char hash[]) {
-    int idx;
-    for (idx = 0; idx < 16; idx++)
-        printf("%02x", hash[idx]);
-    printf("\n");
 }

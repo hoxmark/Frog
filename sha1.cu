@@ -2,19 +2,17 @@
 // Released under the GNU GPL
 // MD5 Hash Digest implementation (little endian byte order)
 
+#include "crack.h"
 #include <stdio.h>
-
 // Signed variables are for wimps
-#define uchar unsigned char
-#define uint unsigned int
 
 // DBL_INT_ADD treats two unsigned ints a and b as one 64-bit integer and adds c
 // to it
-#define ROTLEFT(a, b) ((a << b) | (a >> (32 - b)))
-#define DBL_INT_ADD(a, b, c)                                                   \
-    if (a > 0xffffffff - c)                                                    \
-        ++b;                                                                   \
-    a += c;
+// #define ROTLEFT(a, b) ((a << b) | (a >> (32 - b)))
+// #define DBL_INT_ADD(a, b, c)                                                   \
+//     if (a > 0xffffffff - c)                                                    \
+//         ++b;                                                                   \
+//     a += c;
 
 typedef struct {
     uchar data[64];
@@ -151,11 +149,4 @@ __device__ void sha1_final(SHA1_CTX* ctx, uchar hash[]) {
         hash[i + 12] = (ctx->state[3] >> (24 - i * 8)) & 0x000000ff;
         hash[i + 16] = (ctx->state[4] >> (24 - i * 8)) & 0x000000ff;
     }
-}
-
-__device__ void print_hash(unsigned char hash[]) {
-    int idx;
-    for (idx = 0; idx < 20; idx++)
-        printf("%02x", hash[idx]);
-    printf("\n");
 }

@@ -1,8 +1,10 @@
+
+#include "md5.cu"
+#include "sha1.cu"
 #include "sha256.cu"
 #include <cuda.h>
-#include <stdio.h>
-
 #include <fcntl.h>
+#include <stdio.h>
 #include <sys/io.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -20,12 +22,31 @@
         }                                                                      \
     } while (0)
 
+/*-------------
+* CONFIGURATION
+* ----TYPES---
+* -- 1: MD5 --
+* -- 2: SHA1 -
+* -- 3: SHA256
+*-------------*/
+#define type 1
+
+#define password_length 30
+#if type == 1
+#define hash_length 16
+#endif
+#if type == 2
+#define hash_length 20
+#endif
+#if type == 3
+#define hash_length 32
+#endif
+
 // Hashesorg
-// int num_passwords = 446426204;
+#define num_passwords 446426204
 
 // merged
-int num_passwords = 19922147;
-__constant__ const int password_length = 30;
+// #define num_passwords 19922147
 
 char* host_passwords;
 int* host_password_lengths;
@@ -37,26 +58,49 @@ int* device_start_indexes;
 unsigned char* device_targets;
 
 __device__ int device_num_targets;
-__device__ int device_num_passwords;
 __device__ size_t device_password_file_size;
+
+__device__ void print_hash(unsigned char hash[]) {
+    int idx;
+    for (idx = 0; idx < 32; idx++)
+        printf("%02x", hash[idx]);
+    printf("\n");
+}
 
 __device__ void calculate_hash(unsigned char* pass_cleartext,
                                unsigned char* hash, int length) {
-    SHA256_CTX ctx;
-    sha256_init(&ctx);
-    sha256_update(&ctx, pass_cleartext, length);
-    sha256_final(&ctx, hash);
+
+    if (type == 1) {
+        MD5_CTX ctx;
+        md5_init(&ctx);
+        md5_update(&ctx, pass_cleartext, length);
+        md5_final(&ctx, hash);
+    }
+
+    if (type == 2) {
+        SHA1_CTX ctx;
+        sha1_init(&ctx);
+        sha1_update(&ctx, pass_cleartext, length);
+        sha1_final(&ctx, hash);
+    }
+
+    if (type == 3) {
+        SHA256_CTX ctx;
+        sha256_init(&ctx);
+        sha256_update(&ctx, pass_cleartext, length);
+        sha256_final(&ctx, hash);
+    }
 }
 
 __global__ void compare_hashes(char* hashes, int* lengths, int* start_indexes,
                                unsigned char* targets) {
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     int numThreads = blockDim.x * gridDim.x;
-    int num_to_calculate = device_num_passwords / numThreads;
+    int num_to_calculate = num_passwords / numThreads;
     num_to_calculate += 1;
 
     int i;
-    for (i = id; i < device_num_passwords; i += numThreads) {
+    for (i = id; i < num_passwords; i += numThreads) {
         int length = lengths[i];
         int start = start_indexes[i];
 
@@ -67,12 +111,13 @@ __global__ void compare_hashes(char* hashes, int* lengths, int* start_indexes,
                 memcpy(pass_cleartext, &hashes[start], length);
                 pass_cleartext[length] = '\0';
 
-                unsigned char hash[32];
+                unsigned char hash[hash_length];
                 calculate_hash(pass_cleartext, hash, length);
+
                 for (int k = 0; k < device_num_targets; k++) {
                     bool found = true;
-                    for (int j = 0; j < 32; j++) {
-                        if (hash[j] != targets[k * 32 + j]) {
+                    for (int j = 0; j < hash_length; j++) {
+                        if (hash[j] != targets[k * hash_length + j]) {
                             found = false;
                             break;
                         }
@@ -88,18 +133,29 @@ __global__ void compare_hashes(char* hashes, int* lengths, int* start_indexes,
 }
 
 int main() {
+    FILE* fp;
+    if (type == 1) {
+        fp = fopen("passwords/eharmony.txt", "r");
+    }
 
-    FILE* fp = fopen("targets.txt", "r");
+    if (type == 2) {
+        fp = fopen("passwords/unmasked.lst", "r");
+    }
+
+    if (type == 3) {
+        fp = fopen("passwords/targets.txt", "r");
+    }
+
     const char* file_name =
-        "/datadrive/cracklist/merged/passwords_one_line.txt";
+        "/datadrive/cracklist/hashesorg/passwords_one_line.txt";
     FILE* length_file =
-        fopen("/datadrive/cracklist/merged/password_lengths.txt", "r");
+        fopen("/datadrive/cracklist/hashesorg/password_lengths.txt", "r");
 
     // Calculate file size
     int fd = open(file_name, O_RDONLY);
     size_t password_file_size;
     password_file_size = lseek(fd, 0, SEEK_END);
-    printf("%zu \n", password_file_size);
+    printf("Total file size of the wordlist: %zu \n", password_file_size);
 
     host_password_lengths = (int*)malloc(num_passwords * sizeof(int));
     host_start_indexes = (int*)malloc(num_passwords * sizeof(int));
@@ -132,8 +188,10 @@ int main() {
             host_num_targets++;
         }
     }
-    unsigned char* host_targets =
-        (unsigned char*)malloc(32 * host_num_targets * sizeof(unsigned char));
+
+    // host_num_targets = 100000;
+    unsigned char* host_targets = (unsigned char*)malloc(
+        hash_length * host_num_targets * sizeof(unsigned char));
 
     char* pos;
     char str[65];
@@ -143,12 +201,14 @@ int main() {
         if (fgets(str, 100, fp) != NULL) {
             pos = str;
             int count;
-            for (count = 0; count < 32; count++) {
-                sscanf(pos, "%2hhx", &host_targets[i * 32 + count]);
+            for (count = 0; count < hash_length; count++) {
+                sscanf(pos, "%2hhx", &host_targets[i * hash_length + count]);
                 pos += 2;
             }
         }
     }
+
+    host_num_targets = 10000;
 
     cudaMemcpyToSymbol(device_password_file_size, &password_file_size,
                        sizeof(size_t));
@@ -156,14 +216,11 @@ int main() {
     cudaMemcpyToSymbol(device_num_targets, &host_num_targets, sizeof(int));
     cudaCheckErrors("After cudaMalloc -2");
 
-    cudaMemcpyToSymbol(device_num_passwords, &num_passwords, sizeof(int));
-    cudaCheckErrors("After cudaMalloc -1.5");
-
     cudaMalloc((void**)&device_targets,
-               host_num_targets * 32 * sizeof(unsigned char));
+               host_num_targets * hash_length * sizeof(unsigned char));
     cudaCheckErrors("After cudaMalloc -1");
     cudaMemcpy(device_targets, host_targets,
-               32 * host_num_targets * sizeof(unsigned char),
+               hash_length * host_num_targets * sizeof(unsigned char),
                cudaMemcpyHostToDevice);
     cudaCheckErrors("After cudaMemcpy -1");
 
@@ -191,7 +248,7 @@ int main() {
     dim3 dimGrid(32);
     dim3 dimBlock(1024);
     double n_threads = dimGrid.x * dimBlock.x;
-    printf("%d threads in each grid. Each thread calculating %f hashes \n",
+    printf("%ld threads in each grid. Each thread calculating %f hashes \n",
            numGrid, num_passwords / n_threads);
 
     /* Timing */
