@@ -1,5 +1,52 @@
-#include "crack.h"
+// #include "crack.h"
+
 #include <stdio.h>
+#include <stdlib.h>
+
+#define uchar unsigned char
+#define uint unsigned int
+
+// DBL_INT_ADD treats two unsigned ints a and b as one 64-bit integer and adds c
+// to it
+#define DBL_INT_ADD(a, b, c)                                                   \
+    if (a > 0xffffffff - c)                                                    \
+        ++b;                                                                   \
+    a += c;
+#define ROTLEFT(a, b) ((a << b) | (a >> (32 - b)))
+
+#define F(x, y, z) ((x & y) | (~x & z))
+#define G(x, y, z) ((x & z) | (y & ~z))
+#define H(x, y, z) (x ^ y ^ z)
+#define I(x, y, z) (y ^ (x | ~z))
+
+#define FF(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += F(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+#define GG(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += G(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+#define HH(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += H(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+#define II(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += I(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+
+#define ROTRIGHT(a, b) (((a) >> (b)) | ((a) << (32 - (b))))
+#define CH(x, y, z) (((x) & (y)) ^ (~(x) & (z)))
+#define MAJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+#define EP0(x) (ROTRIGHT(x, 2) ^ ROTRIGHT(x, 13) ^ ROTRIGHT(x, 22))
+#define EP1(x) (ROTRIGHT(x, 6) ^ ROTRIGHT(x, 11) ^ ROTRIGHT(x, 25))
+#define SIG0(x) (ROTRIGHT(x, 7) ^ ROTRIGHT(x, 18) ^ ((x) >> 3))
+#define SIG1(x) (ROTRIGHT(x, 17) ^ ROTRIGHT(x, 19) ^ ((x) >> 10))
 
 typedef struct {
     uchar data[64];
@@ -8,7 +55,7 @@ typedef struct {
     uint state[8];
 } SHA256_CTX;
 
-__device__ uint k[64] = {
+uint k[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
     0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
     0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
@@ -21,7 +68,7 @@ __device__ uint k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-__device__ void sha256_transform(SHA256_CTX* ctx, uchar data[]) {
+void sha256_transform(SHA256_CTX* ctx, uchar data[]) {
     uint a, b, c, d, e, f, g, h, i, j, t1, t2, m[64];
 
     for (i = 0, j = 0; i < 16; ++i, j += 4)
@@ -62,7 +109,7 @@ __device__ void sha256_transform(SHA256_CTX* ctx, uchar data[]) {
     ctx->state[7] += h;
 }
 
-__device__ void sha256_init(SHA256_CTX* ctx) {
+void sha256_init(SHA256_CTX* ctx) {
     ctx->datalen = 0;
     ctx->bitlen[0] = 0;
     ctx->bitlen[1] = 0;
@@ -76,8 +123,8 @@ __device__ void sha256_init(SHA256_CTX* ctx) {
     ctx->state[7] = 0x5be0cd19;
 }
 
-__device__ void sha256_update(SHA256_CTX* ctx, uchar data[], uint len) {
-    uint i;
+void sha256_update(SHA256_CTX* ctx, uchar data[], uint len) {
+    uint t, i;
 
     for (i = 0; i < len; ++i) {
         ctx->data[ctx->datalen] = data[i];
@@ -90,7 +137,7 @@ __device__ void sha256_update(SHA256_CTX* ctx, uchar data[], uint len) {
     }
 }
 
-__device__ void sha256_final(SHA256_CTX* ctx, uchar hash[]) {
+void sha256_final(SHA256_CTX* ctx, uchar hash[]) {
     uint i;
 
     i = ctx->datalen;

@@ -8,6 +8,9 @@ test: test.c
 crack: crack.cu
 	$(NVCC) -arch=compute_30 crack.cu -o crack
 
+crack2: crack2.cu
+	$(NVCC) -arch=compute_30 crack2.cu -o crack2
+
 crackb: crackb.cu
 	$(NVCC) -arch=compute_30 crackb.cu -o crackb
 

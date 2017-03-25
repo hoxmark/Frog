@@ -1,7 +1,55 @@
 // Code by: B-Con (http://b-con.us)
 // Released under the GNU GPL
 // MD5 Hash Digest implementation (little endian byte order)
-#include "crack.h"
+// #include "crack.h"
+#include <stdlib.h>
+
+// Bah, signed variables are for wimps
+
+#define uchar unsigned char
+#define uint unsigned int
+
+// DBL_INT_ADD treats two unsigned ints a and b as one 64-bit integer and adds c
+// to it
+#define DBL_INT_ADD(a, b, c)                                                   \
+    if (a > 0xffffffff - c)                                                    \
+        ++b;                                                                   \
+    a += c;
+#define ROTLEFT(a, b) ((a << b) | (a >> (32 - b)))
+
+#define F(x, y, z) ((x & y) | (~x & z))
+#define G(x, y, z) ((x & z) | (y & ~z))
+#define H(x, y, z) (x ^ y ^ z)
+#define I(x, y, z) (y ^ (x | ~z))
+
+#define FF(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += F(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+#define GG(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += G(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+#define HH(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += H(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+#define II(a, b, c, d, m, s, t)                                                \
+    {                                                                          \
+        a += I(b, c, d) + m + t;                                               \
+        a = b + ROTLEFT(a, s);                                                 \
+    }
+
+#define ROTRIGHT(a, b) (((a) >> (b)) | ((a) << (32 - (b))))
+#define CH(x, y, z) (((x) & (y)) ^ (~(x) & (z)))
+#define MAJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+#define EP0(x) (ROTRIGHT(x, 2) ^ ROTRIGHT(x, 13) ^ ROTRIGHT(x, 22))
+#define EP1(x) (ROTRIGHT(x, 6) ^ ROTRIGHT(x, 11) ^ ROTRIGHT(x, 25))
+#define SIG0(x) (ROTRIGHT(x, 7) ^ ROTRIGHT(x, 18) ^ ((x) >> 3))
+#define SIG1(x) (ROTRIGHT(x, 17) ^ ROTRIGHT(x, 19) ^ ((x) >> 10))
 
 typedef struct {
     uchar data[64];
@@ -10,7 +58,7 @@ typedef struct {
     uint state[4];
 } MD5_CTX;
 
-__device__ void md5_transform(MD5_CTX* ctx, uchar data[]) {
+void md5_transform(MD5_CTX* ctx, uchar data[]) {
     uint a, b, c, d, m[16], i, j;
 
     // MD5 specifies big endian byte order, but this implementation assumes a
@@ -101,7 +149,7 @@ __device__ void md5_transform(MD5_CTX* ctx, uchar data[]) {
     ctx->state[3] += d;
 }
 
-__device__ void md5_init(MD5_CTX* ctx) {
+void md5_init(MD5_CTX* ctx) {
     ctx->datalen = 0;
     ctx->bitlen[0] = 0;
     ctx->bitlen[1] = 0;
@@ -111,8 +159,8 @@ __device__ void md5_init(MD5_CTX* ctx) {
     ctx->state[3] = 0x10325476;
 }
 
-__device__ void md5_update(MD5_CTX* ctx, uchar data[], uint len) {
-    uint i;
+void md5_update(MD5_CTX* ctx, uchar data[], uint len) {
+    uint t, i;
 
     for (i = 0; i < len; ++i) {
         ctx->data[ctx->datalen] = data[i];
@@ -125,7 +173,7 @@ __device__ void md5_update(MD5_CTX* ctx, uchar data[], uint len) {
     }
 }
 
-__device__ void md5_final(MD5_CTX* ctx, uchar hash[]) {
+void md5_final(MD5_CTX* ctx, uchar hash[]) {
     uint i;
 
     i = ctx->datalen;
