@@ -2,8 +2,6 @@
 #define uint unsigned int
 // typedef unsigned char uchar;
 
-
-
 #define DBL_INT_ADD(a, b, c)                                                   \
     if (a > 0xffffffff - (c))                                                  \
         ++b;                                                                   \
